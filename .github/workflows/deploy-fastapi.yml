@@ -1,0 +1,53 @@
+name: Deploy FastAPI with Alembic
+
+on:
+    push:
+        branches: [main]
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+
+            - name: Copy updated app to Droplet
+              uses: appleboy/scp-action@master
+              with:
+                  host: ${{ secrets.FASTAPI_DROPLET_IP }}
+                  username: ${{ secrets.FASTAPI_DROPLET_USER }}
+                  password: ${{ secrets.FASTAPI_DROPLET_PASSWORD }}
+                  source: './*'
+                  target: '/var/www/fastapi-app/'
+
+            - name: Ensure venv exists, install dependencies, run Alembic, and restart uvicorn
+              uses: appleboy/ssh-action@master
+              with:
+                  host: ${{ secrets.FASTAPI_DROPLET_IP }}
+                  username: ${{ secrets.FASTAPI_DROPLET_USER }}
+                  password: ${{ secrets.FASTAPI_DROPLET_PASSWORD }}
+                  script: |
+                      cd /var/www/fastapi-app
+
+                      # Install tmux if not installed
+                      if ! command -v tmux &> /dev/null; then
+                        sudo apt update
+                        sudo apt install -y tmux
+                      fi
+
+                      # Create venv if missing
+                      if [ ! -d "venv" ]; then
+                        python3 -m venv venv
+                      fi
+
+                      source venv/bin/activate
+                      pip install --upgrade pip
+                      pip install -r requirements.txt
+
+                      # Run Alembic migrations
+                      alembic upgrade head
+
+                      # Restart uvicorn inside tmux session
+                      tmux kill-session -t fastapi || true
+                      tmux new-session -d -s fastapi 'source venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000'
