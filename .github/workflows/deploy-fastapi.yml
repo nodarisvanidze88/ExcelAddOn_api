@@ -45,7 +45,8 @@ jobs:
                       pip install --upgrade pip
                       pip install -r requirements.txt
 
-                      # Run Alembic migrations
+                      TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+                      alembic revision --autogenerate -m "auto_${TIMESTAMP}" || true
                       alembic upgrade head
 
                       # Restart uvicorn inside tmux session
